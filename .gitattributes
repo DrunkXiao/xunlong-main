@@ -1,0 +1,23 @@
+# 统一换行：仓库内存 LF，检出到 Windows 时按各文件类型处理
+* text=auto
+
+# 源码固定 LF，避免混合换行导致 diff 噪音
+*.py   text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.css  text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.txt  text eol=lf
+
+# Windows 脚本保留 CRLF
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# 二进制文件不做换行转换
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.exe  binary
+*.zip  binary
+*.db   binary

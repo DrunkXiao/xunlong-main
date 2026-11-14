@@ -1,0 +1,22 @@
+# 寻龙盯盘 — 运行依赖（Python 3.11+）
+PySide6>=6.6
+fastapi>=0.110
+uvicorn[standard]>=0.27
+websockets>=12.0
+pydantic>=2.6
+pydantic-settings>=2.2
+SQLAlchemy>=2.0
+pandas>=2.2
+numpy>=1.26
+httpx>=0.27
+watchdog>=4.0
+PyYAML>=6.0
+python-dateutil>=2.9
+pypinyin>=0.51           # 拼音首字母搜索（缺省时自动退化为代码/名称搜索，不影响启动）
+
+# 测试
+pytest>=8.0
+
+# 可选数据源（按需启用，未安装不应影响主程序启动）
+# akshare>=1.12
+# tushare>=1.4

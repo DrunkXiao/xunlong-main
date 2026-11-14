@@ -1,0 +1,189 @@
+# 寻龙盯盘 配置模板 — 复制为 config.yaml 后修改
+app:
+  name: 寻龙盯盘
+  theme: dark
+  data_dir: ./data            # SQLite、日志、归档都在这里
+  log_level: INFO
+
+database:
+  url: sqlite:///./data/dragon_hunter.db
+  echo: false
+  backup_keep_days: 14
+
+# 数据源：默认 tqcenter（通达信 TdxQuant 本地数据服务）
+#   mock     = D 级模拟数据，仅开发联调
+#   tqcenter = 通达信客户端本地数据，需已安装客户端且本地数据完整
+datasource:
+  name: tqcenter
+  data_level: A               # A 实时授权 / B 延时 / C 历史 / D 模拟（A/B 由 DelayMin 自动判定）
+  poll_interval_sec: 3        # 快照轮询间隔，同时是分时采样间隔
+  latency_warn_ms: 5000
+  latency_abort_ms: 30000
+
+  # --- tqcenter 专用 ---
+  user_dir: "D:/new_tdx64/PYPlugins/user"      # tqcenter.py 所在目录，同级需存在 TPythClient.dll
+  strategy_name: ""           # 留空则自动用 _dragon_hunter_<pid>.py，避免"已有同名策略运行"
+  universe: [SH_MAIN, SZ_MAIN, CHINEXT]
+  more_cache_ttl_sec: 2.0     # 换手率/量比/涨跌停价缓存，单只约 27ms
+  # 以下三项经实测不可用，保持 false 以免界面误导：
+  enable_tick: false          # 逐笔成交（period='tick' 返回 error=-5）
+  enable_minute_kline: false  # 1m/5m/15m/30m/60m（本机返回空）→ 分时改走东财，见 intraday 段
+  enable_lhb: true            # 龙虎榜：走东方财富公开披露（见下方 lhb 段）
+
+
+# 分时（分钟线）：tqcenter 没有分钟K，分时由「分钟线提供方」提供 241 个分钟点
+#   provider: eastmoney     公开 trends2 接口，需联网，241 点（默认）
+#   provider: free_stockdb  读本机 free-stockdb 本地库（github.com/hello245m/free-stockdb）
+#                           不限频、可离线，但数据新鲜度取决于同步工具是否跑过
+#   只认这两种：快照差分是 3 秒区间的另一套口径，已不再作为分时回落源
+#   （旧配置里的 snapshot/none/off 仍能启动，但一律按 eastmoney 装配）
+intraday:
+  provider: eastmoney
+  refresh_sec: 15             # 焦点股刷新间隔（秒）
+  grid_refresh_cycles: 4      # 网格里其它股票每 N 轮拉一次，避免 9 宫格打满接口
+  days: 1                     # 接口支持 1~5 天；只要当天就填 1
+  timeout_sec: 10
+  retries: 2
+
+  # --- 仅 provider: free_stockdb 时生效 ---
+  # 数据在库里是「分钟k」表，键为 代码:YYYYMMDDHHMMSS，一次可取一整天
+  # 取数走官方 Python SDK（stock_sdk.rd），不是 HTTP：引擎回包是二进制协议，
+  # 自己拼 JSON 一定解析失败。所以必须能让 Python 找到 stock_sdk.py + stockdb.pyd。
+  free_stockdb:
+    sdk_dir: ""               # 引擎安装目录下的 pybao 路径，如 G:/stock/stockdb/pybao
+                              # 留空则依次尝试 G:/stock/stockdb/pybao、D:/stockdb/pybao、
+                              # C:/stockdb/pybao，以及环境变量 STOCKDB_SDK_DIR
+    host: 127.0.0.1           # 仅用于报错文案展示；实际连接由 SDK 的 init() 决定
+    port: 7899                # stockdb.exe 默认监听，只绑本机
+    base_url: ""              # 已废弃，保留只为兼容旧配置
+    password: ""              # 服务端未设密码就留空
+    table: 分钟k
+    days: 5                   # 当天没有分钟时向前回溯几个自然日（找最近一个有数据的交易日）
+    strict_today: true        # 盘中若最新一分钟不是今天 → 报「当日未同步」，不拿昨日冒充今日
+    volume_unit: share        # share = 库里的 volume 是股（官方口径）；hand = 手，会 ×100
+    fallback_eastmoney: true  # 主源给不出数据时是否回落东财
+    fallback_cooldown_sec: 120  # 回落一次后，多久再探一次主源
+
+# 资金流（单股精盯 → 日K 下方「主力净额」副图）
+#   数据来自 stockdb 本地库的 `资金流` 表，键 资金流:代码:YYYYMMDD
+#   字段 main_net = 超大单 + 大单，单位是**元**（不是万元），数据源直接给出，不再二次加工
+#   与分时共用 intraday.free_stockdb.sdk_dir，不需要重复配 SDK 路径
+money_flow:
+  enabled: true
+  days: 120                   # 副图最多保留多少个交易日（日K默认显示 100 根）
+  table: 资金流
+  cache_sec: 120              # 同一只股票多久内不重复请求（盘中资金流会变，别设太长）
+
+# 分时资金流（单股精盯 → 分时 下方「资金流」副图）
+#   数据来自东方财富分时资金流：
+#     https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?klt=1&lmt=0
+#     fields2 = f51 时间 / f52 主力 / f53 小单 / f54 中单 / f55 大单 / f56 超大单
+#   **接口回的是当日累计净额（元），不是每分钟增量**，画图直接连线，绝不能再累加
+money_flow_intraday:
+  enabled: true
+  refresh_sec: 15             # 同一只股票多久拉一次（换股会立即拉一次）
+  cache_sec: 10
+  timeout_sec: 8              # 缺省跟随 intraday.timeout_sec
+  retries: 1                  # 失败会换 push2 / push2his 两个域名重试
+
+market:
+  universe: [SH_MAIN, SZ_MAIN, CHINEXT]
+  calendar_source: tqcenter      # tqcenter | approximate | local
+  heartbeat_sec: 5
+
+large_order:
+  # 阈值单位：元 / 分钟（判定时按区间跨度折算：3 秒采样 ÷20，1 分钟原值）
+  tiers:
+    normal: 20_000_000
+    large: 60_000_000
+    super: 100_000_000
+    continuous: 200_000_000
+  streak_count: 3
+  streak_amount_multiplier: 2
+
+alerts:
+  default_cooldown_sec: 300
+  per_symbol_per_minute_limit: 5
+  notify: [popup, sound, log]
+  quiet_when: [non_trading, suspended, data_level_d]
+
+# 龙虎榜：交易所公开披露数据，走东方财富数据中心（独立于行情源）
+#   页面 https://data.eastmoney.com/stock/lhb.html
+#   等级固定 C（披露数据，T 日盘后发布），与实时行情 A 级分开标注
+lhb:
+  enabled: true
+  provider: eastmoney
+  timeout_sec: 12
+  retries: 2
+  page_size: 100
+
+# 强势回调低吸（选股）：只读本地通达信日线，全市场约 1 分钟，不占 tqcenter 会话
+#   规则来自 ashare-strong-pullback 策略 3.0：近10日涨停 + 创20日新高 + 回调到 MA10/颈线
+#   ±1.5% + 缩量（5日/前10日 ≤ 0.50）+ 止跌形态（阳包阴/锤子线）
+pullback:
+  tdx_root: ""                  # 留空则由 datasource.user_dir 上溯推导（一般就是 D:/new_tdx64）
+  markets: [SH, SZ]
+  universe_prefixes: ["60", "00", "30"]   # 沪主板 / 深主板 / 创业板
+  exclude_st: true              # 名称含 ST / 退 的直接剔除
+  min_bars: 60                  # 上市不足 60 个交易日的剔除
+  tail_bars: 160                # 每股只解析最近 N 根日线
+  stale_days_max: 12            # 全市场数据超过 N 个自然日未更新 → 不出确认信号，只给观察
+  stale_stock_days: 7           # 个股K线落后超过 N 天视为停牌/未更新，跳过
+  account_equity: 1000000       # 算「1% 风险 / 10% 单票上限」股数用的账户权益
+  max_candidates: 120           # 候选表最多留多少只（全市场评估数另计，不影响未通过统计）
+  report_top_n: 60              # 导出 HTML 里候选排名表显示前 N 只
+  limit: 0                      # 调试用：只扫前 N 只（0 = 全市场）
+  strategy:
+    recent_limitup_days: 10
+    stage_high_lookback: 20
+    support_tolerance_pct: 1.5
+    pullback_volume_ratio_max: 0.50
+    pullback_window: 5
+    rally_window: 10
+    stop_buffer_pct: 2.0
+    reward_risk_ratio: 2.5
+    limitup_close_only: true    # true = 收盘封涨停才算；false = 盘中触及即算（含炸板）
+    # off = 板块强度恒 0（满分实际只有 80）；breadth = 按行业成分股近20日涨幅排名给 0-20 分
+    sector_score_mode: breadth
+    risk_pct: 1.0               # 单笔风险占权益上限
+    position_pct: 10.0          # 单票市值占权益上限
+    max_positions: 3
+
+# 涨停四阶段选股：首板发现 → 三倍量确认 → 次日承接 → 二次启动
+#   规则来自 a-share-limitup-hunter 3.x；数据只读本地通达信日线（vipdoc），不占 tqcenter 会话
+#   阈值（量能≥3倍 / 额≥2倍 / 承接 A·B·C·D / 突破≥1.5倍）写死在 app/services/limitup.py，
+#   与 references/strategy.md 一一对应；这里只放扫描范围与数据闸门
+limitup:
+  tdx_root: ""                  # 留空则由 datasource.user_dir 上溯推导（一般就是 D:/new_tdx64）
+  markets: [SH, SZ]
+  universe_prefixes: ["60", "00", "30"]   # 沪主板 / 深主板 / 创业板（科创/北交所不纳入）
+  exclude_st: true              # ST / 退 直接剔除
+  min_bars: 25                  # 少于 25 根日线算不出 20 日首板窗口，跳过
+  tail_bars: 130                # 每股只解析最近 N 根（首板 + 10 日整理足够）
+  board_min_days: 60            # 上市不足 60 个自然日：量能不可比，剔除
+  top: 10                       # 精选上限（不足不凑数）
+  stale_days_max: 10            # 数据滞后超过 N 个自然日：拒绝选股，提示去下载盘后数据
+  max_idle_days: 12             # 池内跟踪超过 N 个交易日无信号 → S9 退出观察
+  report_top_n: 60              # 导出 HTML 每张表最多显示 N 行
+  limit: 0                      # 调试用：只扫前 N 只（0 = 全市场）
+
+# 通达信联动：二级页面（强势回调 / 涨停四阶）选中标的后的「通达信联动」按钮
+# 会 GET {base_url}/tdx?code=<6位代码>，由外部桥接脚本接收；本程序不等响应内容。
+tdx_link:
+  base_url: http://127.0.0.1:3000
+  timeout_sec: 2.0
+
+tdx_bridge:
+  enabled: false
+  channels: [csv, json_watch, http]
+  csv_dir: ./data/tdx_inbox
+  json_watch_dir: ./data/tdx_watch
+  http_port: 8611
+  default_group: 盘中异动池
+  reconnect_max_delay_sec: 30
+
+storage:
+  tick_retention_days: 20
+  kline_retention_years: 10
+  archive_format: parquet     # parquet | none
+  batch_size: 500

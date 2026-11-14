@@ -1,0 +1,66 @@
+# 寻龙盯盘 配置模板 — 复制为 config.yaml 后修改
+app:
+  name: 寻龙盯盘
+  theme: dark
+  data_dir: ./data            # SQLite、日志、归档都在这里
+  log_level: INFO
+
+database:
+  url: sqlite:///./data/dragon_hunter.db
+  echo: false
+  backup_keep_days: 14
+
+# 数据源：默认 tqcenter（通达信 TdxQuant 本地数据服务）
+#   mock     = D 级模拟数据，仅开发联调
+#   tqcenter = 通达信客户端本地数据，需已安装客户端且本地数据完整
+datasource:
+  name: tqcenter
+  data_level: A               # A 实时授权 / B 延时 / C 历史 / D 模拟（A/B 由 DelayMin 自动判定）
+  poll_interval_sec: 3        # 快照轮询间隔，同时是分时采样间隔
+  latency_warn_ms: 5000
+  latency_abort_ms: 30000
+
+  # --- tqcenter 专用 ---
+  user_dir: "D:/new_tdx64/PYPlugins/user"      # tqcenter.py 所在目录，同级需存在 TPythClient.dll
+  strategy_name: ""           # 留空则自动用 _dragon_hunter_<pid>.py，避免"已有同名策略运行"
+  universe: [SH_MAIN, SZ_MAIN, CHINEXT]
+  more_cache_ttl_sec: 2.0     # 换手率/量比/涨跌停价缓存，单只约 27ms
+  # 以下三项经实测不可用，保持 false 以免界面误导：
+  enable_tick: false          # 逐笔成交（period='tick' 返回 error=-5）
+  enable_minute_kline: false  # 1m/5m/15m/30m/60m（本机返回空）
+  enable_lhb: false           # 龙虎榜（无接口，改 CSV 导入）
+
+market:
+  universe: [SH_MAIN, SZ_MAIN, CHINEXT]
+  calendar_source: tqcenter      # tqcenter | approximate | local
+  heartbeat_sec: 5
+
+large_order:
+  tiers:
+    normal: 1_000_000
+    large: 3_000_000
+    super: 5_000_000
+    continuous: 10_000_000
+  streak_count: 3
+  streak_amount_multiplier: 2
+
+alerts:
+  default_cooldown_sec: 300
+  per_symbol_per_minute_limit: 5
+  notify: [popup, sound, log]
+  quiet_when: [non_trading, suspended, data_level_d]
+
+tdx_bridge:
+  enabled: false
+  channels: [csv, json_watch, http]
+  csv_dir: ./data/tdx_inbox
+  json_watch_dir: ./data/tdx_watch
+  http_port: 8611
+  default_group: 盘中异动池
+  reconnect_max_delay_sec: 30
+
+storage:
+  tick_retention_days: 20
+  kline_retention_years: 10
+  archive_format: parquet     # parquet | none
+  batch_size: 500
