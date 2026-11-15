@@ -36,6 +36,7 @@ from app.ui.charts import CANDLE_SCHEMES, TOTAL_SLOTS
 from app.ui.panels import (
     AlertRulePanel, GroupPanel, LogPanel, OrderBookPanel, TradePanel, _label,
 )
+from app.ui.banqiang_view import BanqiangView
 from app.ui.limitup_view import LimitupView
 from app.ui.pullback_view import PullbackView
 from app.ui.theme import COLORS, load_qss
@@ -222,11 +223,18 @@ class MainWindow(QMainWindow):
         self.limitup_view.add_requested.connect(self._on_limitup_add)
         self.limitup_view.bars_needed.connect(self._load_limitup_bars)
         self.limitup_view.message.connect(self._on_limitup_message)
+        # 量学板枪选股：同样是本地日线 + 独立线程；五阶段 = 板日 → 枪日 → 缩量回调 → 阶梯筹码 → 买点
+        self.banqiang_view = BanqiangView(self.config, self.repo)
+        self.banqiang_view.symbol_activated.connect(self._on_banqiang_symbol)
+        self.banqiang_view.add_requested.connect(self._on_banqiang_add)
+        self.banqiang_view.bars_needed.connect(self._load_banqiang_bars)
+        self.banqiang_view.message.connect(self._on_banqiang_message)
         self.center = QStackedWidget()
         self.center.addWidget(self.single_view)
         self.center.addWidget(self.grid_view)
         self.center.addWidget(self.pullback_view)
         self.center.addWidget(self.limitup_view)
+        self.center.addWidget(self.banqiang_view)
 
         self.splitter.addWidget(self.left)
         self.splitter.addWidget(self.center)
@@ -281,6 +289,12 @@ class MainWindow(QMainWindow):
             "四阶段选股：首板发现 → 三倍量确认 → 次日承接 → 二次启动\n"
             "收盘后日线口径（本地通达信 vipdoc），带跨日股票池状态机")
         self.btn_limitup.clicked.connect(lambda: self._set_mode("limitup"))
+        self.btn_banqiang = QPushButton("量学板枪")
+        self.btn_banqiang.setCheckable(True)
+        self.btn_banqiang.setToolTip(
+            "五阶段选股：涨停首板 → 放量出枪 → 缩量回调 → 黄金阶梯/筹码 → 二次启动买点\n"
+            "收盘后日线口径（本地通达信 vipdoc），给出买点触发价、止损、三级目标位")
+        self.btn_banqiang.clicked.connect(lambda: self._set_mode("banqiang"))
         self.grid_combo = QComboBox()
         for size in GRID_SIZES:
             self.grid_combo.addItem(f"{size} 格", size)
@@ -299,6 +313,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.btn_grid)
         layout.addWidget(self.btn_pullback)
         layout.addWidget(self.btn_limitup)
+        layout.addWidget(self.btn_banqiang)
         layout.addWidget(self.grid_combo)
         layout.addWidget(self.btn_lhb)
         return bar
@@ -450,6 +465,7 @@ class MainWindow(QMainWindow):
             self.intraday_poller.stop()
         self.pullback_view.stop()
         self.limitup_view.stop()
+        self.banqiang_view.stop()
         self.jobs.stop()
         try:
             self.adapter.disconnect()
@@ -865,11 +881,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"K线配色：{tip} · 已保存，重启保持", 4000)
 
     def _apply_candle_scheme(self, scheme: str) -> None:
-        """一套配色喂给所有 K 线图：单股 / 强势回调 / 涨停四阶。"""
+        """一套配色喂给所有 K 线图：单股 / 强势回调 / 涨停四阶 / 量学板枪。"""
         self.candle_scheme = scheme if scheme in CANDLE_SCHEMES else "change"
         self.single_view.set_candle_scheme(self.candle_scheme)
         self.pullback_view.chart.set_candle_scheme(self.candle_scheme)
         self.limitup_view.chart.set_candle_scheme(self.candle_scheme)
+        self.banqiang_view.chart.set_candle_scheme(self.candle_scheme)
 
     def _on_period_changed(self, period: str) -> None:
         if period not in PERIOD_LABELS:
@@ -947,18 +964,20 @@ class MainWindow(QMainWindow):
             self._refresh_grid()
 
     def _apply_mode(self) -> None:
-        if self.mode not in ("single", "grid", "pullback", "limitup"):
+        if self.mode not in ("single", "grid", "pullback", "limitup", "banqiang"):
             self.mode = "single"
         mode = self.mode
         self.btn_single.setChecked(mode == "single")
         self.btn_grid.setChecked(mode == "grid")
         self.btn_pullback.setChecked(mode == "pullback")
         self.btn_limitup.setChecked(mode == "limitup")
+        self.btn_banqiang.setChecked(mode == "banqiang")
         self.grid_combo.setVisible(mode == "grid")
         # 盘口/成交/预警都是「当前这一只」的口径，选股页用不上，收起来把宽度让给候选表
-        self.right_panel.setVisible(mode not in ("pullback", "limitup"))
+        self.right_panel.setVisible(mode not in ("pullback", "limitup", "banqiang"))
         widget = {"grid": self.grid_view, "pullback": self.pullback_view,
-                  "limitup": self.limitup_view}.get(mode, self.single_view)
+                  "limitup": self.limitup_view, "banqiang": self.banqiang_view}.get(
+                      mode, self.single_view)
         self.center.setCurrentWidget(widget)
         if mode == "grid":
             self.grid_view.set_size(self.grid_size)
@@ -1266,6 +1285,10 @@ class MainWindow(QMainWindow):
             symbol = (done.meta or {}).get("symbol")
             if symbol:
                 self.limitup_view.set_chart_bars(symbol, done.result or [])
+        elif done.tag == "banqiang-kline":
+            symbol = (done.meta or {}).get("symbol")
+            if symbol:
+                self.banqiang_view.set_chart_bars(symbol, done.result or [])
 
     def _refresh_status(self) -> None:
         now = datetime.now()
@@ -1403,6 +1426,37 @@ class MainWindow(QMainWindow):
                          None, None, 220, meta={"symbol": symbol})
 
     def _on_limitup_message(self, text: str) -> None:
+        if not text:
+            return
+        self.statusBar().showMessage(text, 8000)
+        self.logs.append_event(text)
+
+    # ---------------------------------------------------------- 量学板枪
+    def _on_banqiang_symbol(self, symbol: str) -> None:
+        """候选表双击 / 「单股查看」→ 切回单股精盯，看分时/盘口/成交。"""
+        self.open_symbol(symbol, source="量学板枪")
+
+    def _on_banqiang_add(self, symbols: list[str]) -> None:
+        if not symbols:
+            return
+        groups = self.repo.groups()
+        target = next((g for g in groups if "量学板枪" in (g["name"] or "")), None)
+        group_id = target["id"] if target else self.repo.create_group("量学板枪池")
+        added = self.repo.add_symbols(group_id, symbols)
+        self._refresh_groups(select_group=group_id)
+        names = self.repo.stock_names(symbols)
+        label = "、".join(names.get(s, s) for s in symbols)
+        self.statusBar().showMessage(f"已加入量学板枪池：{label}（新增 {added}）", 5000)
+        self.logs.append_event(f"量学板枪：{label} 加入量学板枪池（新增 {added} 只）")
+
+    def _load_banqiang_bars(self, symbol: str) -> None:
+        """恢复上次扫描结果时按需回取日K（不改变选股结论）。"""
+        if not symbol:
+            return
+        self.jobs.submit("banqiang-kline", self.adapter.get_kline, symbol, "1d",
+                         None, None, 220, meta={"symbol": symbol})
+
+    def _on_banqiang_message(self, text: str) -> None:
         if not text:
             return
         self.statusBar().showMessage(text, 8000)

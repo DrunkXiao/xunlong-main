@@ -181,7 +181,8 @@ def resolve_root(config: dict) -> Path | None:
     """
     pb = (config or {}).get("pullback") or {}
     lb = (config or {}).get("limitup") or {}
-    explicit = str(pb.get("tdx_root") or lb.get("tdx_root") or "").strip()
+    bq = (config or {}).get("banqiang") or {}
+    explicit = str(pb.get("tdx_root") or lb.get("tdx_root") or bq.get("tdx_root") or "").strip()
     if explicit:
         path = Path(explicit)
         if (path / "vipdoc").is_dir():

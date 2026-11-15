@@ -167,7 +167,23 @@ limitup:
   report_top_n: 60              # 导出 HTML 每张表最多显示 N 行
   limit: 0                      # 调试用：只扫前 N 只（0 = 全市场）
 
-# 通达信联动：二级页面（强势回调 / 涨停四阶）选中标的后的「通达信联动」按钮
+# 量学板枪选股：涨停首板 → 放量出枪 → 缩量回调 → 黄金阶梯/筹码 → 二次启动买点
+#   规则来自 liangxue-banqiang-hunter；数据只读本地通达信日线（vipdoc），不占 tqcenter 会话
+#   阈值（板日量≥1.3倍 / 枪日量≥板日且≥5日均量1.2倍 / 缩量≥1/3 / 回撤比≥0.25 / 回调≤5日）
+#   写死在 app/services/banqiang.py，与 references/strategy.md 一一对应；这里只放扫描范围与闸门
+banqiang:
+  tdx_root: ""                  # 留空则由 datasource.user_dir 上溯推导（一般就是 D:/new_tdx64）
+  markets: [SH, SZ]
+  universe_prefixes: ["60", "00", "30"]   # 沪主板 / 深主板 / 创业板（科创/北交所不纳入）
+  exclude_st: true              # ST / 退 直接剔除
+  min_bars: 30                  # 少于 30 根日线算不出板枪结构，跳过
+  tail_bars: 260                # 每股读最近 N 根：「500 里高量」要 250 根
+  board_min_days: 60            # 上市不足 60 个自然日：量能不可比，剔除
+  max_candidates: 120           # 候选表上限（按评分排序后截断）
+  stale_days_max: 10            # 数据滞后超过 N 个自然日：拒绝选股，提示去下载盘后数据
+  limit: 0                      # 调试用：只扫前 N 只（0 = 全市场）
+
+# 通达信联动：二级页面（强势回调 / 涨停四阶 / 量学板枪）选中标的后的「通达信联动」按钮
 # 会 GET {base_url}/tdx?code=<6位代码>，由外部桥接脚本接收；本程序不等响应内容。
 tdx_link:
   base_url: http://127.0.0.1:3000
