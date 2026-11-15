@@ -1,6 +1,8 @@
 """配置加载：config.yaml -> dict，缺文件时回落到安全默认值。"""
 from __future__ import annotations
 
+import copy
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +88,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def load_config(path: str | Path | None = "config.yaml") -> dict[str, Any]:
     """读取 YAML 配置。文件缺失或 PyYAML 未安装时返回默认值，不抛异常。"""
-    config = dict(DEFAULTS)
+    config = copy.deepcopy(DEFAULTS)
     if path is None:
         return config
     file = Path(path)
@@ -96,10 +98,24 @@ def load_config(path: str | Path | None = "config.yaml") -> dict[str, Any]:
         import yaml  # 延迟导入，缺依赖时仍可启动
     except ImportError:
         return config
-    with file.open("r", encoding="utf-8") as fh:
-        loaded = yaml.safe_load(fh) or {}
-    if isinstance(loaded, dict):
-        config = _deep_merge(config, loaded)
+    try:
+        with file.open("r", encoding="utf-8") as fh:
+            loaded = yaml.safe_load(fh) or {}
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        warnings.warn(
+            f"配置文件读取或解析失败，使用默认配置：{file}（{exc}）",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return config
+    if not isinstance(loaded, dict):
+        warnings.warn(
+            f"配置文件根节点必须是映射，使用默认配置：{file}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return config
+    config = _deep_merge(config, loaded)
     return config
 
 

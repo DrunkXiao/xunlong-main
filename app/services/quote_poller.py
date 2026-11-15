@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
@@ -19,6 +20,8 @@ from app.db.models import Bar, Quote
 from app.db.repo import Repo
 from app.services.intraday import IntradaySampler, SamplePoint
 from app.services.large_order import LargeOrder, LargeOrderDetector
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -118,7 +121,12 @@ class QuotePoller(threading.Thread):
                     errors.append(f"{symbol}: {exc}")
                     continue
                 quotes.append(quote)
-                point, fired = self._feed(quote, focus)
+                try:
+                    point, fired = self._feed(quote, focus)
+                except Exception as exc:
+                    logger.exception("处理行情失败，跳过本次采样：%s", symbol)
+                    errors.append(f"{symbol}: {type(exc).__name__}: {exc}")
+                    continue
                 if point is not None:
                     points.append(point)
                 orders.extend(fired)
@@ -134,7 +142,7 @@ class QuotePoller(threading.Thread):
                         if orders:
                             self.repo.insert_large_orders(orders)
                     except Exception:
-                        pass
+                        logger.exception("保存行情轮询结果失败")
             else:
                 self.fail_streak += 1
                 self.last_error = errors[0] if errors else "无行情返回"
@@ -190,7 +198,7 @@ class QuotePoller(threading.Thread):
         try:
             self.repo.upsert_bars([bar])
         except Exception:
-            pass
+            logger.exception("保存采样分钟线失败：%s", point.symbol)
         if len(self._minute_bars) > 2000:
             for old_key in list(self._minute_bars)[:1000]:
                 self._minute_bars.pop(old_key, None)

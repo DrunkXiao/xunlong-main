@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
@@ -22,6 +23,8 @@ from app.adapters.base import DataSourceError
 from app.db.repo import Repo
 from app.services.intraday import EM_FLAG, MinuteFeed, SamplePoint, minute_bars_to_rows
 from app.services.large_order import LargeOrder, LargeOrderDetector
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -118,10 +121,23 @@ class IntradayPoller(threading.Thread):
             for symbol in targets:
                 if self._stop.is_set():
                     return
-                self._fetch_one(symbol, focus)
+                try:
+                    self._fetch_one(symbol, focus)
+                except Exception as exc:
+                    self.fail_streak += 1
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+                    logger.exception("处理分时数据失败，跳过本次更新：%s", symbol)
+                    self._put(IntradayUpdate(
+                        symbol=symbol, ok=False, error=self.last_error,
+                    ))
             self.last_elapsed_ms = int((time.time() - started) * 1000)
 
-            base = self.refresh if self.is_trading() else self.refresh * 4
+            try:
+                trading = self.is_trading()
+            except Exception:
+                logger.exception("读取交易时段失败，按非交易时段节流")
+                trading = False
+            base = self.refresh if trading else self.refresh * 4
             if self.fail_streak:
                 base = min(120.0, base * (2 ** min(self.fail_streak, 3)))
             self._wait(max(1.0, base - (time.time() - started)))
@@ -170,12 +186,13 @@ class IntradayPoller(threading.Thread):
                     flag=getattr(trends, "minute_flag", None) or EM_FLAG,
                 ))
             except Exception:
+                logger.exception("保存分钟线失败：%s", symbol)
                 written = 0
             if orders or backfill:
                 try:
                     self.repo.insert_large_orders(list(orders) + list(backfill))
                 except Exception:
-                    pass
+                    logger.exception("保存分时大单失败：%s", symbol)
 
         self._put(IntradayUpdate(
             symbol=symbol, series=series, fresh=fresh, orders=orders,
