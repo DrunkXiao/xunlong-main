@@ -303,7 +303,7 @@ class TqCenterAdapter:
             sector=True,
             subscribe_max=100,
             data_level=self._level,
-            note="通达信客户端本地数据：日K/快照/五档/板块可用，逐笔与分钟K不可用",
+            note="通达信本地数据",
         )
 
     def health_check(self) -> dict:
