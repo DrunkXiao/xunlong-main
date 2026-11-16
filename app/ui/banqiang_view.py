@@ -35,8 +35,8 @@ from app.ui.theme import COLORS
 SETTING_KEY = "banqiang.last_scan"
 
 FILTERS = (
-    ("pick", "精选买点"),
     ("all", "全部候选"),
+    ("pick", "精选买点"),
     ("买入观察", "买入观察"),
     ("买点临近", "买点临近"),
     ("缩量回调中", "缩量回调中"),

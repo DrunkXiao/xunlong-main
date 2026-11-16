@@ -28,7 +28,7 @@ WARN = QColor(COLORS["warn"])
 INFO = QColor(COLORS["info"])
 PANEL = QColor(COLORS["panel"])
 
-MA_COLORS = ["#ffee00", "#FF0000", "#00c40a", "#FF00D4"]
+MA_COLORS = ["#FFFFE0", "#FFD700", "#FF1493", "#228B22"]
 
 # K 线配色方案：涨跌（默认，红涨绿跌） / 均线关系（按收盘价与 MA5/MA20 的排列上色）
 CANDLE_SCHEMES = {"change": "涨跌配色", "ma": "均线关系"}
@@ -39,7 +39,7 @@ CANDLE_SCHEME_TIP = (
     "　　　　　收与 MA5、MA5 与 MA20 方向不一致 → 紫（分歧）；\n"
     "　　　　　等于均线（贴线）按分歧处理；MA20 未成形的早期 K 线退回涨跌配色。")
 # 分歧色用紫色：既不是多头红也不是空头绿，避免把「价在均线上但均线仍空头」读成看多
-CANDLE_PURPLE = "#ae00ff"
+CANDLE_PURPLE = "#C71585"
 
 
 def candle_color(close: float, open_: float, ma5: float | None,
