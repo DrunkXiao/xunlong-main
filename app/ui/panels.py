@@ -313,9 +313,9 @@ class GroupPanel(QWidget):
         header.addStretch(1)
         for text, tip, slot in (
             ("📄", "新建分组", self._on_new),
-            ("✏️", "重命名当前分组", self._on_rename),
-            ("📋", "复制当前分组", self._on_copy),
-            ("🗑️", "删除当前分组（需二次确认）", self._on_delete),
+            ("✏️", "重命名分组", self._on_rename),
+            ("📋", "复制分组", self._on_copy),
+            ("🗑️", "删除分组", self._on_delete),
         ):
             btn = QPushButton(text)
             btn.setToolTip(tip)
@@ -810,7 +810,7 @@ class AlertRulePanel(QWidget):
         self.btn_add.clicked.connect(lambda: self.add_requested.emit(""))
         header.addWidget(self.btn_add)
         btn_refresh = QPushButton("刷新")
-        btn_refresh.setFixedWidth(42)
+        btn_refresh.setFixedWidth(50)
         btn_refresh.setToolTip("重新载入规则")
         btn_refresh.clicked.connect(self.refresh_requested)
         header.addWidget(btn_refresh)

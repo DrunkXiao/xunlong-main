@@ -97,8 +97,7 @@ class Database:
     def seed_default_groups(self, names: list[str] | None = None) -> None:
         """写入默认分组（模块H），已存在则跳过。"""
         groups = names or [
-            "龙头核心池", "市场最高板", "连板晋级池", "首板观察池", "二波启动池",
-            "强势趋势池", "主线题材池", "龙虎榜观察池", "盘中异动池", "待复盘股票池",
+            "龙头核心池", "龙虎榜观察池",
         ]
         with self.cursor() as cur:
             for idx, name in enumerate(groups):

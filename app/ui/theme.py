@@ -11,9 +11,9 @@ COLORS = {
     "text": "#E6EAF0",
     "text_dim": "#9AA4B2",
     "text_muted": "#5C6673",
-    "up": "#ff0000",
-    "down": "#4ce653",
-    "warn": "#F5B544",
+    "up": "#DC143C",
+    "down": "#3CB371",
+    "warn": "#FFD700",
     "info": "#3D8BFD",
     "unknown": "#5C6673",
 }

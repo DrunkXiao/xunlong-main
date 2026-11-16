@@ -119,10 +119,10 @@ QStatusBar::item { border: none; }
 
 /* 语义色：通过 objectName 或 property 使用 */
 QLabel[role="up"], QLabel[role="up"] * { color: #DC143C; }
-QLabel[role="down"], QLabel[role="down"] * { color: #00FA9A; }
+QLabel[role="down"], QLabel[role="down"] * { color: #3CB371; }
 QLabel[role="flat"] { color: #9AA4B2; }
 QLabel[role="muted"] { color: #5C6673; }
-QLabel[role="warn"] { color: #F5B544; }
+QLabel[role="warn"] { color: #FFD700; }
 QLabel[role="info"] { color: #3D8BFD; }
 QLabel[role="metric"] {
     font-family: "JetBrains Mono", "Consolas", monospace;
